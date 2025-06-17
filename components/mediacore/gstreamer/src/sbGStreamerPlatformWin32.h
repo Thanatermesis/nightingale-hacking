@@ -30,7 +30,6 @@
 #include <windows.h>
 
 #include <gst/gst.h>
-#include <gst/interfaces/xoverlay.h>
 
 #include "sbIGstPlatformInterface.h"
 #include "sbGStreamerPlatformBase.h"

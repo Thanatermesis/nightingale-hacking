@@ -275,7 +275,8 @@ sbGStreamerMediacoreFactory::OnGetCapabilities(
 #endif
 
       // Check for the 'qtvideowrapper' plugin to add mp4/m4v extensions.
-      GstPlugin *plugin = gst_default_registry_find_plugin("qtvideowrapper");
+      GstRegistry *registry = gst_registry_get();
+      GstPlugin *plugin = gst_registry_find_plugin(registry, "qtvideowrapper");
       if (plugin) {
         videoExtensions.AppendElement(NS_LITERAL_STRING("mp4"));
         videoExtensions.AppendElement(NS_LITERAL_STRING("m4v"));
@@ -294,29 +295,30 @@ sbGStreamerMediacoreFactory::OnGetCapabilities(
       const gchar* factoryName = gst_plugin_feature_get_name (GST_PLUGIN_FEATURE (factory));
       gboolean isAudioFactory = g_str_has_prefix(factoryName, "audio/");
 
-      gchar **factoryexts = gst_type_find_factory_get_extensions (factory);
+      const gchar * const *factoryexts = gst_type_find_factory_get_extensions (factory);
       if (factoryexts) {
-        while (*factoryexts) {
+        const gchar * const *ext = factoryexts;
+        while (*ext) {
           gboolean isAudioExtension = isAudioFactory;
-          nsCString extension(*factoryexts);
+          nsCString extension(*ext);
           nsCString delimitedExtension(extension);
           delimitedExtension.Insert(',', 0);
           delimitedExtension.Append(',');
-          
+
           blacklisted = (blacklistExtensions.Find(delimitedExtension) != -1);
           #if PR_LOGGING
             if (blacklisted) {
-                LOG(("sbGStreamerMediacoreFactory: Ignoring extension '%s'", *factoryexts));
+                LOG(("sbGStreamerMediacoreFactory: Ignoring extension '%s'", *ext));
             }
           #endif /* PR_LOGGING */
 
           if (!blacklisted && isAudioExtension) {
-            audioExtensions.AppendElement(NS_ConvertUTF8toUTF16(*factoryexts));
+            audioExtensions.AppendElement(NS_ConvertUTF8toUTF16(*ext));
             LOG(("sbGStreamerMediacoreFactory: registering audio extension %s\n",
-                  *factoryexts));
+                  *ext));
           }
 
-          factoryexts++;
+          ext++;
         }
       }
       walker = g_list_next (walker);

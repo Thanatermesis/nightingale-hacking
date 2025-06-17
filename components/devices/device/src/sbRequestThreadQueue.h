@@ -79,6 +79,7 @@ public:
     typedef std::list<sbRequestItem *> RequestItems;
   public:
     // types
+    typedef sbRequestItem* value_type;
     typedef RequestItems::const_iterator const_iterator;
     typedef RequestItems::iterator iterator;
     typedef RequestItems::size_type size_type;

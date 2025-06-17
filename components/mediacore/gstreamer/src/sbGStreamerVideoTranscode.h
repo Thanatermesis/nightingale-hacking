@@ -248,6 +248,10 @@ private:
   GstPad                                 *mAudioQueueSrc;
   GstPad                                 *mVideoQueueSrc;
 
+  // Store pad probe IDs for block probes
+  gulong                                  mAudioQueueProbeId = 0;
+  gulong                                  mVideoQueueProbeId = 0;
+
   // Booleans to track whether we'll use audio/video/muxer
   PRBool                                  mUseAudio;
   PRBool                                  mUseVideo;

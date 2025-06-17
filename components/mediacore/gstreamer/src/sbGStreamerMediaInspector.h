@@ -88,11 +88,9 @@ private:
   void HandleStateChangeMessage(GstMessage *message);
   void HandleErrorMessage(GstMessage *message);
 
-  static void fakesink_audio_event_cb (GstPad *pad, GstEvent *event,
-                                 sbGStreamerMediaInspector *inspector);
+  static GstPadProbeReturn fakesink_audio_event_cb (GstPad *pad, GstPadProbeInfo *info, gpointer user_data);
 
-  static void fakesink_video_event_cb (GstPad *pad, GstEvent *event,
-                                 sbGStreamerMediaInspector *inspector);
+  static GstPadProbeReturn fakesink_video_event_cb (GstPad *pad, GstPadProbeInfo *info, gpointer user_data);
 
   static void decodebin_pad_added_cb (GstElement *element, GstPad *pad,
                                       sbGStreamerMediaInspector *inspector);

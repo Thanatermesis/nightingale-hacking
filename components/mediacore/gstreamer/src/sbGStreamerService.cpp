@@ -24,7 +24,7 @@
 
 #include "sbGStreamerService.h"
 #include "sbGStreamerMediacoreUtils.h"
-#include <gst/pbutils/descriptions.h>
+#include <gst/pbutils/pbutils.h>
 #include <glib.h>
 
 #include <sbLibraryLoaderUtils.h>
@@ -392,41 +392,48 @@ sbGStreamerService::Inspect(sbIGStreamerInspectHandler* aHandler)
   rv = aHandler->BeginInspect();
   NS_ENSURE_SUCCESS(rv, rv);
 
-  orig_plugins = plugins = gst_default_registry_get_plugin_list();
+  GstRegistry *registry = gst_registry_get();
+  orig_plugins = plugins = gst_registry_get_plugin_list(registry);
   while (plugins) {
-    GstPlugin *plugin;
-    plugin = (GstPlugin *) (plugins->data);
-    plugins = g_list_next (plugins);
+    GstPlugin *plugin = (GstPlugin *)(plugins->data);
+    plugins = g_list_next(plugins);
 
     nsCString filename;
-    if (plugin->filename) {
-      filename = plugin->filename;
-    }
-    else {
+    const gchar *plugin_filename = gst_plugin_get_filename(plugin);
+    if (plugin_filename) {
+      filename = plugin_filename;
+    } else {
       filename.SetIsVoid(PR_TRUE);
     }
 
-    rv = aHandler->BeginPluginInfo(nsDependentCString(plugin->desc.name),
-                                   nsDependentCString(plugin->desc.description),
-                                   filename,
-                                   nsDependentCString(plugin->desc.version),
-                                   nsDependentCString(plugin->desc.license),
-                                   nsDependentCString(plugin->desc.source),
-                                   nsDependentCString(plugin->desc.package),
-                                   nsDependentCString(plugin->desc.origin));
+    const gchar *name = gst_plugin_get_name(plugin);
+    const gchar *desc = gst_plugin_get_description(plugin);
+    const gchar *version = gst_plugin_get_version(plugin);
+    const gchar *license = gst_plugin_get_license(plugin);
+    const gchar *source = gst_plugin_get_source(plugin);
+    const gchar *package = gst_plugin_get_package(plugin);
+    const gchar *origin = gst_plugin_get_origin(plugin);
+
+    rv = aHandler->BeginPluginInfo(
+      nsDependentCString(name ? name : ""),
+      nsDependentCString(desc ? desc : ""),
+      filename,
+      nsDependentCString(version ? version : ""),
+      nsDependentCString(license ? license : ""),
+      nsDependentCString(source ? source : ""),
+      nsDependentCString(package ? package : ""),
+      nsDependentCString(origin ? origin : "")
+    );
     NS_ENSURE_SUCCESS(rv, rv);
 
     GList *features, *orig_features;
     orig_features = features =
-      gst_registry_get_feature_list_by_plugin(gst_registry_get_default(),
-                                              plugin->desc.name);
+      gst_registry_get_feature_list_by_plugin(registry, name ? name : "");
     while (features) {
-      GstPluginFeature *feature;
-      feature = GST_PLUGIN_FEATURE(features->data);
+      GstPluginFeature *feature = GST_PLUGIN_FEATURE(features->data);
 
       if (GST_IS_ELEMENT_FACTORY(feature)) {
-        GstElementFactory *factory;
-        factory = GST_ELEMENT_FACTORY(feature);
+        GstElementFactory *factory = GST_ELEMENT_FACTORY(feature);
 
         rv = InspectFactory(factory, aHandler);
         NS_WARN_IF_FALSE(NS_SUCCEEDED(rv), "InspectFactory failed");
@@ -441,7 +448,7 @@ sbGStreamerService::Inspect(sbIGStreamerInspectHandler* aHandler)
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
-  gst_plugin_list_free(orig_plugins);
+  g_list_free(orig_plugins);
 
   rv = aHandler->EndInspect();
   NS_ENSURE_SUCCESS(rv, rv);
@@ -456,24 +463,28 @@ sbGStreamerService::InspectFactory(GstElementFactory* aFactory,
   nsresult rv;
 
   GstElementFactory* factory;
-  factory =
-      GST_ELEMENT_FACTORY(gst_plugin_feature_load(GST_PLUGIN_FEATURE
-                                                 (aFactory)));
+  factory = GST_ELEMENT_FACTORY(gst_plugin_feature_load(GST_PLUGIN_FEATURE(aFactory)));
   NS_ENSURE_TRUE(factory, NS_ERROR_UNEXPECTED);
 
-  GstElement *element;
-  element = gst_element_factory_create(aFactory, NULL);
+  GstElement *element = gst_element_factory_create(aFactory, NULL);
   NS_ENSURE_TRUE(element, NS_ERROR_UNEXPECTED);
 
-  gint rank = GST_PLUGIN_FEATURE(factory)->rank;
+  gint rank = gst_plugin_feature_get_rank(GST_PLUGIN_FEATURE(factory));
+  const gchar *name = gst_plugin_feature_get_name(GST_PLUGIN_FEATURE(factory));
+  const gchar *longname = gst_element_factory_get_longname(factory);
+  const gchar *klass = gst_element_factory_get_klass(factory);
+  const gchar *description = gst_element_factory_get_description(factory);
+  const gchar *author = gst_element_factory_get_author(factory);
 
-  rv = aHandler->BeginFactoryInfo(nsDependentCString(GST_PLUGIN_FEATURE(factory)->name),
-                                  nsDependentCString(factory->details.longname),
-                                  nsDependentCString(factory->details.klass),
-                                  nsDependentCString(factory->details.description),
-                                  nsDependentCString(factory->details.author),
-                                  nsDependentCString(get_rank_name(rank)),
-                                  rank);
+  rv = aHandler->BeginFactoryInfo(
+    nsDependentCString(name ? name : ""),
+    nsDependentCString(longname ? longname : ""),
+    nsDependentCString(klass ? klass : ""),
+    nsDependentCString(description ? description : ""),
+    nsDependentCString(author ? author : ""),
+    nsDependentCString(get_rank_name(rank)),
+    rank
+  );
   NS_ENSURE_SUCCESS(rv, rv);
 
   rv = InspectFactoryPads(element, factory, aHandler);
@@ -490,15 +501,11 @@ sbGStreamerService::InspectFactoryPads(GstElement* aElement,
                                        GstElementFactory* aFactory,
                                        sbIGStreamerInspectHandler* aHandler)
 {
-  GstElementClass *gstelement_class;
-  gstelement_class = GST_ELEMENT_CLASS(G_OBJECT_GET_CLASS(aElement));
   nsresult rv;
 
-  const GList *pads;
-  pads = aFactory->staticpadtemplates;
+  const GList *pads = gst_element_factory_get_static_pad_templates(aFactory);
   while (pads) {
-    GstStaticPadTemplate *padtemplate;
-    padtemplate = (GstStaticPadTemplate *) (pads->data);
+    GstStaticPadTemplate *padtemplate = (GstStaticPadTemplate *)(pads->data);
     pads = g_list_next(pads);
 
     PRUint32 direction;
@@ -527,7 +534,7 @@ sbGStreamerService::InspectFactoryPads(GstElement* aElement,
 
     nsCString codecDescription;
 
-    GstCaps* caps = gst_static_caps_get(&padtemplate->static_caps);
+    GstCaps* caps = gst_static_pad_template_get_caps(padtemplate);
     if (caps) {
       if (gst_caps_is_fixed(caps)) {
         gchar* codec = gst_pb_utils_get_codec_description(caps);
@@ -542,10 +549,12 @@ sbGStreamerService::InspectFactoryPads(GstElement* aElement,
     if (codecDescription.IsEmpty()) {
       codecDescription.SetIsVoid(PR_TRUE);
     }
-    rv = aHandler->BeginPadTemplateInfo(nsDependentCString(padtemplate->name_template),
-                                        direction,
-                                        presence,
-                                        codecDescription);
+    rv = aHandler->BeginPadTemplateInfo(
+      nsDependentCString(padtemplate->name_template),
+      direction,
+      presence,
+      codecDescription
+    );
     NS_ENSURE_SUCCESS(rv, rv);
 
     rv = aHandler->EndPadTemplateInfo();

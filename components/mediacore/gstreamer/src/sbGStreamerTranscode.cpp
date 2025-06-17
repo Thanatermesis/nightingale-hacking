@@ -235,14 +235,20 @@ sbGStreamerTranscode::AddImageToTagList(GstTagList *aTags,
 
   sbAutoNSMemPtr imageDataDestroy(imageData);
 
-  GstBuffer *imagebuf = gst_tag_image_data_to_image_buffer (
+  GstSample *sample = gst_tag_image_data_to_image_sample (
           imageData, imageDataLen, GST_TAG_IMAGE_TYPE_FRONT_COVER);
-  if (!imagebuf)
+  if (!sample)
     return NS_ERROR_FAILURE;
+
+  GstBuffer *imagebuf = gst_sample_get_buffer(sample);
+  if (!imagebuf) {
+    gst_sample_unref(sample);
+    return NS_ERROR_FAILURE;
+  }
 
   gst_tag_list_add (aTags, GST_TAG_MERGE_REPLACE, GST_TAG_IMAGE,
           imagebuf, NULL);
-  gst_buffer_unref (imagebuf);
+  gst_sample_unref (sample);
 
   return NS_OK;
 }
@@ -278,16 +284,32 @@ sbGStreamerTranscode::BuildPipeline()
     // Find all the tag setters in the pipeline
     GstIterator *it = gst_bin_iterate_all_by_interface (
             (GstBin *)mPipeline, GST_TYPE_TAG_SETTER);
-    GstElement *element;
+    GValue value = G_VALUE_INIT;
+    gboolean done = FALSE;
 
-    while (gst_iterator_next (it, (void **)&element) == GST_ITERATOR_OK) {
-      GstTagSetter *setter = GST_TAG_SETTER (element);
+    while (!done) {
+      switch (gst_iterator_next(it, &value)) {
+        case GST_ITERATOR_OK: {
+          GstElement *element = (GstElement *)g_value_get_object(&value);
+          GstTagSetter *setter = GST_TAG_SETTER (element);
 
-      /* Use MERGE_REPLACE: preserves existing tag where we don't have one
-       * in our taglist */
-      gst_tag_setter_merge_tags (setter, tags, GST_TAG_MERGE_REPLACE);
-      g_object_unref (element);
+          /* Use MERGE_REPLACE: preserves existing tag where we don't have one
+           * in our taglist */
+          gst_tag_setter_merge_tags (setter, tags, GST_TAG_MERGE_REPLACE);
+          g_object_unref (element);
+          g_value_reset(&value);
+          break;
+        }
+        case GST_ITERATOR_RESYNC:
+          gst_iterator_resync(it);
+          break;
+        case GST_ITERATOR_ERROR:
+        case GST_ITERATOR_DONE:
+          done = TRUE;
+          break;
+      }
     }
+    g_value_unset(&value);
     gst_iterator_free (it);
     gst_tag_list_free (tags);
   }

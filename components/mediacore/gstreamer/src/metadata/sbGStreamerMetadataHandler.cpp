@@ -361,7 +361,7 @@ sbGStreamerMetadataHandler::Read(PRInt32 *_retval)
   // Handle GStreamer messages synchronously, either directly or
   // dispatching to the main thread.
   gst_bus_set_sync_handler(bus.get(), SyncToAsyncDispatcher,
-                           static_cast<sbGStreamerMessageHandler*>(this));
+                           static_cast<sbGStreamerMessageHandler*>(this), NULL);
   
   TRACE(("%s: Setting URI to [%s]", __FUNCTION__, mSpec.get()));
   g_object_set(G_OBJECT(decodeBin.get()), "uri", mSpec.get(), NULL);
@@ -528,16 +528,24 @@ sbGStreamerMetadataHandler::HandleMessage(GstMessage *message)
       if (gst_is_missing_plugin_message(message)) {
         /* If we got a missing plugin message about a missing video decoder,
            we should still mark it as a video file */
-        const gchar *type = gst_structure_get_string(message->structure, "type");
-        if (type && !strcmp(type, "decoder")) {
-          /* Missing decoder: see if it's video */
-          const GValue *val = gst_structure_get_value (message->structure, "detail");
-          const GstCaps *caps = gst_value_get_caps (val);
-          GstStructure *structure = gst_caps_get_structure (caps, 0);
-          const gchar *capsname = gst_structure_get_name (structure);
-
-          if (g_str_has_prefix(capsname, "video/")) {
-            mHasVideo = PR_TRUE;
+        const GstStructure *structure = gst_message_get_structure(message);
+        if (structure) {
+          const gchar *type = gst_structure_get_string(structure, "type");
+          if (type && !strcmp(type, "decoder")) {
+            /* Missing decoder: see if it's video */
+            const GValue *val = gst_structure_get_value(structure, "detail");
+            if (val) {
+              const GstCaps *caps = gst_value_get_caps(val);
+              if (caps) {
+                GstStructure *caps_struct = gst_caps_get_structure(caps, 0);
+                if (caps_struct) {
+                  const gchar *capsname = gst_structure_get_name(caps_struct);
+                  if (g_str_has_prefix(capsname, "video/")) {
+                    mHasVideo = PR_TRUE;
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -556,12 +564,13 @@ sbGStreamerMetadataHandler::HandleMessage(GstMessage *message)
       if (GST_IS_ELEMENT (message->src)) {
         GstElementClass *elementclass = GST_ELEMENT_CLASS (
             G_OBJECT_GET_CLASS (message->src));
-        GstElementFactory *factory = elementclass->elementfactory;
+        GstElementFactory *factory = gst_element_get_factory(GST_ELEMENT(message->src));
 
-        if (strstr (factory->details.klass, "Video") &&
-            strstr (factory->details.klass, "Decoder"))
-        {
-          mHasVideo = PR_TRUE;
+        if (factory) {
+          const gchar *klass = gst_element_factory_get_klass(factory);
+          if (strstr(klass, "Video") && strstr(klass, "Decoder")) {
+            mHasVideo = PR_TRUE;
+          }
         }
       }
 
@@ -686,7 +695,7 @@ sbGStreamerMetadataHandler::on_pad_caps_changed(GstPad *pad,
     return;
   }
   GstStructure* capStruct = NULL;
-  sbGstCaps caps = gst_pad_get_negotiated_caps(pad);
+  sbGstCaps caps = gst_pad_get_current_caps(pad);
   if (!caps) {
     // no negotiated caps yet, keep waiting
     TRACE(("%s: no caps yet", __FUNCTION__));

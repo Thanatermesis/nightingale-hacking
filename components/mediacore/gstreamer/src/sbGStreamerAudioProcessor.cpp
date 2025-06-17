@@ -424,7 +424,7 @@ sbGStreamerAudioProcessor::DecoderPadAdded (GstElement *uridecodebin,
 
   // A new decoded pad has been added from the decodebin. If it's the first
   // audio stream, we use it. Otherwise, we ignore it.
-  GstCaps *caps = gst_pad_get_caps (pad);
+  GstCaps *caps = gst_pad_get_current_caps(pad);
   GstStructure *structure = gst_caps_get_structure (caps, 0);
   const gchar *name = gst_structure_get_name (structure);
   bool isAudio = g_str_has_prefix (name, "audio/");
@@ -701,7 +701,7 @@ sbGStreamerAudioProcessor::GetDurationFromBuffer(GstBuffer *buf)
   else
     size = sizeof(short);
 
-  return GST_BUFFER_SIZE (buf) / size;
+  return gst_buffer_get_size(buf) / size;
 }
 
 void
@@ -730,8 +730,10 @@ sbGStreamerAudioProcessor::GetMoreData()
     mIsEndOfSection = PR_FALSE;
   }
   else {
-    GstBuffer *buf = gst_app_sink_pull_buffer(mAppSink);
-    NS_ASSERTION(buf, "pulled buffer when asked to get more but got no buffer");
+    GstSample *sample = gst_app_sink_pull_sample(mAppSink);
+    NS_ASSERTION(sample, "pulled sample when asked to get more but got no sample");
+    GstBuffer *buf = gst_sample_get_buffer(sample);
+    NS_ASSERTION(buf, "No buffer in pulled sample");
 
     // Consider this a discontinuity if the sample numbers are discontinuous,
     // or we get a DISCONT buffer _other than_ at the very start of the stream.
@@ -742,7 +744,7 @@ sbGStreamerAudioProcessor::GetMoreData()
       LOG(("Discontinuity found"));
       // We include mPendingBuffer in mAvailableBuffers, so don't need to
       // decrement in this case.
-      mPendingBuffer = buf;
+      mPendingBuffer = gst_buffer_ref(buf);
       mIsEndOfSection = PR_TRUE;
     }
     else {
@@ -750,9 +752,10 @@ sbGStreamerAudioProcessor::GetMoreData()
 
       if (gst_adapter_available(mAdapter) == 0)
         mSampleNumber = nextSampleNumber;
-      gst_adapter_push(mAdapter, buf);
+      gst_adapter_push(mAdapter, gst_buffer_ref(buf));
       mExpectedNextSampleNumber += GetDurationFromBuffer(buf);
     }
+    gst_sample_unref(sample);
   }
 }
 
@@ -841,7 +844,7 @@ sbGStreamerAudioProcessor::DetermineFormat()
 {
   GstPad *appsinkSinkPad = gst_element_get_static_pad (GST_ELEMENT (mAppSink),
                                                        "sink");
-  GstCaps *caps = gst_pad_get_negotiated_caps(appsinkSinkPad);
+  GstCaps *caps = gst_pad_get_current_caps(appsinkSinkPad);
   if (!caps)
     return NS_ERROR_FAILURE;
 
@@ -941,7 +944,7 @@ sbGStreamerAudioProcessor::SendDataToListener()
   else
     NS_NOTREACHED("not enough data here");
 
-  data = gst_adapter_peek(mAdapter, bytesRead);
+  data = (const guint8 *)gst_adapter_map(mAdapter, bytesRead);
 
   PRUint32 sampleNumber = mSampleNumber;
   PRUint32 numSamples;
@@ -983,8 +986,9 @@ sbGStreamerAudioProcessor::SendDataToListener()
 
   mSampleNumber += numSamples;
 
+  gst_adapter_unmap(mAdapter);
   gst_adapter_flush(mAdapter, bytesRead);
-  
+
   // Listener might have paused or stopped us; in that case we don't want to
   // schedule another send.
   if (mSuspended)

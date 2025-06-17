@@ -1277,7 +1277,7 @@ nsresult sbMetadataHandlerTaglib::RemoveAllImagesOGG(
         {
           break;
         }
-        std::string decodedData = base64_decode(encodedData.to8Bit());
+        std::string decodedData = base64_decode(std::string(encodedData.toCString(true)));
         if (decodedData.empty())
           break;
         ByteVector bv;
@@ -1683,7 +1683,7 @@ nsresult sbMetadataHandlerTaglib::ReadImageOgg(TagLib::Ogg::XiphComment  *aTag,
       {
         break;
       }
-      std::string decodedData = base64_decode(encodedData.to8Bit());
+      std::string decodedData = base64_decode(std::string(encodedData.toCString(true)));
       if (decodedData.empty())
         break;
       ByteVector bv;
@@ -3547,7 +3547,7 @@ nsresult sbMetadataHandlerTaglib::WriteXiphComment(
 
 /*
  * base64 encode/decode routines:
- * Copyright (C) 2004-2008 René Nyffenegger
+ * Copyright (C) 2004-2008 Rene Nyffenegger
  *
  * This source code is provided 'as-is', without any express or implied
  * warranty. In no event will the author be held liable for any damages
@@ -3567,7 +3567,7 @@ nsresult sbMetadataHandlerTaglib::WriteXiphComment(
  *
  * 3. This notice may not be removed or altered from any source distribution.
  *
- * René Nyffenegger rene.nyffenegger@adp-gmbh.ch
+ * Rene Nyffenegger rene.nyffenegger@adp-gmbh.ch
 */
 
 static const std::string base64_chars = 

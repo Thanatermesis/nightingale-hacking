@@ -364,8 +364,7 @@ sbGStreamerMediacore::ReadPreferences()
 
       // Ref and sink the object to take ownership; we'll keep track of it
       // from here on.
-      gst_object_ref (mReplaygainElement);
-      gst_object_sink (mReplaygainElement);
+      gst_object_ref_sink (mReplaygainElement);
 
       rv = AddAudioFilter(mReplaygainElement);
       NS_ENSURE_SUCCESS(rv, rv);
@@ -493,7 +492,7 @@ sbGStreamerMediacore::CreateAudioSink()
 
   gst_bin_add ((GstBin *)sinkbin, audiosink);
 
-  targetpad = gst_element_get_pad (audiosink, "sink");
+  targetpad = gst_element_get_static_pad (audiosink, "sink");
 
   /* Add each filter, followed by an audioconvert. The first-added filter ends
    * last in the pipeline, so we iterate in reverse.
@@ -508,18 +507,18 @@ sbGStreamerMediacore::CreateAudioSink()
 
     gst_bin_add_many ((GstBin *)sinkbin, filter, audioconvert, NULL);
 
-    srcpad = gst_element_get_pad (filter, "src");
-    sinkpad = gst_element_get_pad (audioconvert, "sink");
+    srcpad = gst_element_get_static_pad (filter, "src");
+    sinkpad = gst_element_get_static_pad (audioconvert, "sink");
     gst_pad_link (srcpad, sinkpad);
     gst_object_unref (srcpad);
     gst_object_unref (sinkpad);
 
-    srcpad = gst_element_get_pad (audioconvert, "src");
+    srcpad = gst_element_get_static_pad (audioconvert, "src");
     gst_pad_link (srcpad, targetpad);
     gst_object_unref (targetpad);
     gst_object_unref (srcpad);
 
-    targetpad = gst_element_get_pad (filter, "sink");
+    targetpad = gst_element_get_static_pad (filter, "sink");
   }
 
   // Now, targetpad is the left-most real pad in our bin. Ghost it to provide
@@ -553,7 +552,7 @@ sbGStreamerMediacore::currentAudioSetHelper(GObject* obj, GParamSpec* pspec,
 
   if (pad) {
     GstCaps *caps;
-    caps = gst_pad_get_negotiated_caps(pad);
+    caps = gst_pad_get_current_caps(pad);
     if (caps) {
       core->OnAudioCapsSet(caps);
       gst_caps_unref(caps);
@@ -571,7 +570,7 @@ sbGStreamerMediacore::audioCapsSetHelper(GObject* obj, GParamSpec* pspec,
         sbGStreamerMediacore *core)
 {
   GstPad *pad = GST_PAD(obj);
-  GstCaps *caps = gst_pad_get_negotiated_caps(pad);
+  GstCaps *caps = gst_pad_get_current_caps(pad);
 
   if (caps) {
     core->OnAudioCapsSet(caps);
@@ -598,7 +597,7 @@ sbGStreamerMediacore::currentVideoSetHelper(GObject* obj, GParamSpec* pspec,
 
   if (pad) {
     GstCaps *caps;
-    caps = gst_pad_get_negotiated_caps(pad);
+    caps = gst_pad_get_current_caps(pad);
     if (caps) {
       core->OnVideoCapsSet(caps);
       gst_caps_unref(caps);
@@ -616,7 +615,7 @@ sbGStreamerMediacore::videoCapsSetHelper(GObject* obj, GParamSpec* pspec,
         sbGStreamerMediacore *core)
 {
   GstPad *pad = GST_PAD(obj);
-  GstCaps *caps = gst_pad_get_negotiated_caps(pad);
+  GstCaps *caps = gst_pad_get_current_caps(pad);
 
   if (caps) {
     core->OnVideoCapsSet(caps);
@@ -728,11 +727,12 @@ sbGStreamerMediacore::SetPropertyOnChild(GstElement *aElement,
     GstIterator *it = gst_bin_iterate_sorted ((GstBin *)aElement);
 
     while (!done) {
-      gpointer data;
       GstElement *child;
-      switch (gst_iterator_next (it, &data)) {
+      GValue value = G_VALUE_INIT;
+      g_value_init(&value, G_TYPE_OBJECT);
+      switch (gst_iterator_next (it, &value)) {
         case GST_ITERATOR_OK:
-          child = GST_ELEMENT_CAST (data);
+          child = GST_ELEMENT_CAST (g_value_get_object(&value));
           if (SetPropertyOnChild(child,
                   aPropertyName, aPropertyValue))
           {
@@ -751,6 +751,7 @@ sbGStreamerMediacore::SetPropertyOnChild(GstElement *aElement,
           done = true;
           break;
       }
+      g_value_unset(&value);
     }
 
     gst_iterator_free (it);
@@ -813,7 +814,7 @@ sbGStreamerMediacore::CreatePlaybackPipeline()
   // Handle GStreamer messages synchronously, either directly or
   // dispatching to the main thread.
   gst_bus_set_sync_handler (bus, SyncToAsyncDispatcher,
-                            static_cast<sbGStreamerMessageHandler*>(this));
+                            static_cast<sbGStreamerMessageHandler*>(this), NULL);
 
   g_object_unref ((GObject *)bus);
 
@@ -846,8 +847,10 @@ PRBool sbGStreamerMediacore::HandleSynchronousMessage(GstMessage *aMessage)
     case GST_MESSAGE_ELEMENT: {
       // Win32 and GDK use prepare-xwindow-id, OSX has its own private thing,
       // have-ns-view
-      if (gst_structure_has_name(aMessage->structure, "prepare-xwindow-id") ||
-          gst_structure_has_name(aMessage->structure, "have-ns-view"))
+      const GstStructure *structure = gst_message_get_structure(aMessage);
+      if (structure &&
+          (gst_structure_has_name(structure, "prepare-xwindow-id") ||
+           gst_structure_has_name(structure, "have-ns-view")))
       {
         if(mPlatformInterface)
         {
@@ -1100,7 +1103,8 @@ void sbGStreamerMediacore::HandleRedirectMessage(GstMessage *message)
   nsresult rv;
   nsCString uriString;
 
-  location = gst_structure_get_string (message->structure, "new-location");
+  const GstStructure *structure = gst_message_get_structure(message);
+  location = structure ? gst_structure_get_string (structure, "new-location") : NULL;
 
   if (location && *location) {
     if (strstr (location, "://") != NULL) {
@@ -1473,10 +1477,13 @@ void sbGStreamerMediacore::HandleMessage (GstMessage *message)
     case GST_MESSAGE_BUFFERING:
       HandleBufferingMessage(message);
     case GST_MESSAGE_ELEMENT: {
-      if (gst_structure_has_name (message->structure, "redirect")) {
-        HandleRedirectMessage(message);
-      } else if (gst_is_missing_plugin_message(message)) {
-        HandleMissingPluginMessage(message);
+      {
+        const GstStructure *structure = gst_message_get_structure(message);
+        if (structure && gst_structure_has_name (structure, "redirect")) {
+          HandleRedirectMessage(message);
+        } else if (gst_is_missing_plugin_message(message)) {
+          HandleMissingPluginMessage(message);
+        }
       }
       break;
     }
@@ -1701,8 +1708,7 @@ sbGStreamerMediacore::OnInitBaseMediacoreMultibandEqualizer()
   if (mEqualizerElement) {
     // Ref and sink the object to take ownership; we'll keep track of it
     // from here on.
-    gst_object_ref (mEqualizerElement);
-    gst_object_sink (mEqualizerElement);
+    gst_object_ref_sink (mEqualizerElement);
 
     // Set the bands to the frequencies we want
     char band[16] = {0};
@@ -1713,7 +1719,7 @@ sbGStreamerMediacore::OnInitBaseMediacoreMultibandEqualizer()
     for(PRUint32 i = 0; i < EQUALIZER_DEFAULT_BAND_COUNT; ++i) {
       PR_snprintf (band, 16, "band%i::freq", i);
       g_value_set_double (&freqVal, EQUALIZER_BANDS[i]);
-      gst_child_proxy_set_property (GST_OBJECT (mEqualizerElement),
+      gst_child_proxy_set_property (GST_CHILD_PROXY (mEqualizerElement),
                                     band,
                                     &freqVal);
     }

@@ -819,14 +819,14 @@ sbGStreamerVideoTranscoder::AddImageToTagList(GstTagList *aTags,
 
   sbAutoNSMemPtr imageDataDestroy(imageData);
 
-  GstBuffer *imagebuf = gst_tag_image_data_to_image_buffer (
+  GstSample *image_sample = gst_tag_image_data_to_image_sample(
           imageData, imageDataLen, GST_TAG_IMAGE_TYPE_FRONT_COVER);
-  if (!imagebuf)
+  if (!image_sample)
     return NS_ERROR_FAILURE;
 
   gst_tag_list_add (aTags, GST_TAG_MERGE_REPLACE, GST_TAG_IMAGE,
-          imagebuf, NULL);
-  gst_buffer_unref (imagebuf);
+          image_sample, NULL);
+  gst_sample_unref (image_sample);
 
   return NS_OK;
 }
@@ -841,7 +841,7 @@ sbGStreamerVideoTranscoder::SetMetadataOnTagSetters()
 
   if (mImageStream) {
     if (!tags) {
-      tags = gst_tag_list_new();
+      tags = gst_tag_list_new_empty();
     }
 
     // Ignore return value here, failure is not critical.
@@ -852,15 +852,15 @@ sbGStreamerVideoTranscoder::SetMetadataOnTagSetters()
     // Find all the tag setters in the pipeline
     GstIterator *it = gst_bin_iterate_all_by_interface (
             (GstBin *)mPipeline, GST_TYPE_TAG_SETTER);
-    GstElement *element;
-
-    while (gst_iterator_next (it, (void **)&element) == GST_ITERATOR_OK) {
+    GValue item = G_VALUE_INIT;
+    while (gst_iterator_next (it, &item) == GST_ITERATOR_OK) {
+      GstElement *element = (GstElement *)g_value_get_object(&item);
       GstTagSetter *setter = GST_TAG_SETTER (element);
 
       /* Use MERGE_REPLACE: preserves existing tag where we don't have one
        * in our taglist */
       gst_tag_setter_merge_tags (setter, tags, GST_TAG_MERGE_REPLACE);
-      g_object_unref (element);
+      g_value_unset(&item);
     }
     gst_iterator_free (it);
     gst_tag_list_free (tags);
@@ -967,7 +967,7 @@ sbGStreamerVideoTranscoder::DecoderPadAdded (GstElement *uridecodebin,
     return NS_ERROR_FAILURE;
   }
 
-  GstCaps *caps = gst_pad_get_caps (pad);
+  GstCaps *caps = gst_pad_get_current_caps (pad);
   GstStructure *structure = gst_caps_get_structure (caps, 0);
   const gchar *name = gst_structure_get_name (structure);
   bool isVideo = g_str_has_prefix (name, "video/");
@@ -1333,23 +1333,40 @@ sbGStreamerVideoTranscoder::GetRawAudioCaps(GstCaps **aResultCaps)
   rv = audioFormat->GetChannels (&outputChannels);
   NS_ENSURE_SUCCESS (rv, rv);
 
-  gint32 endianness = isLittleEndian ? G_LITTLE_ENDIAN : G_BIG_ENDIAN;
+  // gint32 endianness = isLittleEndian ? G_LITTLE_ENDIAN : G_BIG_ENDIAN;
   GstCaps *caps;
   if (isFloat) {
-    caps = gst_caps_new_simple ("audio/x-raw-float",
-          "endianness", G_TYPE_INT, endianness,
-          "width", G_TYPE_INT, sampleDepth,
-          "rate", G_TYPE_INT, outputRate,
-          "channels", G_TYPE_INT, outputChannels);
-  }
-  else {
-    caps = gst_caps_new_simple ("audio/x-raw-int",
-          "endianness", G_TYPE_INT, endianness,
-          "width", G_TYPE_INT, sampleDepth,
-          "depth", G_TYPE_INT, sampleDepth,
+    caps = gst_caps_new_simple ("audio/x-raw",
+          "format", G_TYPE_STRING, "F32LE",
           "rate", G_TYPE_INT, outputRate,
           "channels", G_TYPE_INT, outputChannels,
-          "signed", G_TYPE_BOOLEAN, sampleDepth != 8);
+          NULL);
+  }
+  else {
+    // Choose format based on sampleDepth and endianness
+    const char* format = nullptr;
+    if (sampleDepth == 16 && isLittleEndian)
+      format = "S16LE";
+    else if (sampleDepth == 16 && !isLittleEndian)
+      format = "S16BE";
+    else if (sampleDepth == 24 && isLittleEndian)
+      format = "S24LE";
+    else if (sampleDepth == 24 && !isLittleEndian)
+      format = "S24BE";
+    else if (sampleDepth == 32 && isLittleEndian)
+      format = "S32LE";
+    else if (sampleDepth == 32 && !isLittleEndian)
+      format = "S32BE";
+    else if (sampleDepth == 8)
+      format = "U8";
+    else
+      format = "S16LE"; // fallback
+
+    caps = gst_caps_new_simple ("audio/x-raw",
+          "format", G_TYPE_STRING, format,
+          "rate", G_TYPE_INT, outputRate,
+          "channels", G_TYPE_INT, outputChannels,
+          NULL);
   }
 
   *aResultCaps = caps;
@@ -1539,8 +1556,8 @@ sbGStreamerVideoTranscoder::AddAudioBin(GstPad *inputAudioSrcPad,
   gst_caps_unref (caps);
   NS_ENSURE_SUCCESS (rv, rv);
 
-  GstPad *audioBinSinkPad = gst_element_get_pad (audioBin, "sink");
-  GstPad *audioBinSrcPad = gst_element_get_pad (audioBin, "src");
+  GstPad *audioBinSinkPad = gst_element_get_static_pad (audioBin, "sink");
+  GstPad *audioBinSrcPad = gst_element_get_static_pad (audioBin, "src");
 
   gst_bin_add (GST_BIN (mPipeline), audioBin);
   gst_element_sync_state_with_parent (audioBin);
@@ -1588,8 +1605,8 @@ sbGStreamerVideoTranscoder::AddVideoBin(GstPad *inputVideoSrcPad,
   gst_caps_unref (caps);
   NS_ENSURE_SUCCESS (rv, rv);
 
-  GstPad *videoBinSinkPad = gst_element_get_pad (videoBin, "sink");
-  GstPad *videoBinSrcPad = gst_element_get_pad (videoBin, "src");
+  GstPad *videoBinSinkPad = gst_element_get_static_pad (videoBin, "sink");
+  GstPad *videoBinSrcPad = gst_element_get_static_pad (videoBin, "src");
 
   gst_bin_add (GST_BIN (mPipeline), videoBin);
   gst_element_sync_state_with_parent (videoBin);
@@ -1629,7 +1646,7 @@ sbGStreamerVideoTranscoder::GetPadFromTemplate (GstElement *element,
   }
   else {
     // Request pad
-    return gst_element_get_request_pad (element, templ->name_template);
+    return gst_element_request_pad_simple (element, templ->name_template);
   }
 }
 
@@ -1653,7 +1670,7 @@ sbGStreamerVideoTranscoder::GetCompatiblePad (GstElement *element,
     // Check that pad's direction is opposite this template's direction.
     // Then check that they have potentially-compatible caps.
     if (GST_PAD_DIRECTION (pad) != padtempl->direction) {
-      GstCaps *caps = gst_pad_get_caps (pad);
+      GstCaps *caps = gst_pad_get_current_caps (pad);
 
       gboolean compatible = gst_caps_can_intersect (
           caps, GST_PAD_TEMPLATE_CAPS (padtempl));
@@ -1776,9 +1793,14 @@ sbGStreamerVideoTranscoder::CreateSink (GstElement **aSink)
   }
   else if (!mDestURI.IsEmpty()) {
     nsCString uri = NS_ConvertUTF16toUTF8 (mDestURI);
+    GError *error = NULL;
     sink = gst_element_make_from_uri (GST_URI_SINK,
                                       uri.BeginReading(),
-                                      "sink");
+                                      "sink",
+                                      &error);
+    if (error) {
+      g_error_free(error);
+    }
   }
 
   if (!sink) {
@@ -2054,7 +2076,7 @@ sbGStreamerVideoTranscoder::DecoderNoMorePads(GstElement *uridecodebin)
             G_CALLBACK (pad_notify_caps_cb), this);
 
     GstElement *queue = gst_element_factory_make ("queue", "audio-queue");
-    GstPad *queueSink = gst_element_get_pad (queue, "sink");
+    GstPad *queueSink = gst_element_get_static_pad (queue, "sink");
 
     gst_bin_add (GST_BIN (mPipeline), queue);
     gst_element_sync_state_with_parent (queue);
@@ -2062,11 +2084,11 @@ sbGStreamerVideoTranscoder::DecoderNoMorePads(GstElement *uridecodebin)
     gst_pad_link (mAudioSrc, queueSink);
     g_object_unref (queueSink);
 
-    GstPad *queueSrc = gst_element_get_pad (queue, "src");
+    GstPad *queueSrc = gst_element_get_static_pad (queue, "src");
     mAudioQueueSrc = queueSrc;
 
-    gst_pad_set_blocked_async (queueSrc, TRUE,
-                               (GstPadBlockCallback)pad_blocked_cb, this);
+    // GStreamer 1.0: Use pad probe to block/unblock
+    mAudioQueueProbeId = gst_pad_add_probe(queueSrc, GST_PAD_PROBE_TYPE_BLOCK, (GstPadProbeCallback)pad_blocked_cb, this, NULL);
   }
 
   if (mVideoSrc) {
@@ -2074,7 +2096,7 @@ sbGStreamerVideoTranscoder::DecoderNoMorePads(GstElement *uridecodebin)
             G_CALLBACK (pad_notify_caps_cb), this);
 
     GstElement *queue = gst_element_factory_make ("queue", "video-queue");
-    GstPad *queueSink = gst_element_get_pad (queue, "sink");
+    GstPad *queueSink = gst_element_get_static_pad (queue, "sink");
 
     gst_bin_add (GST_BIN (mPipeline), queue);
     gst_element_sync_state_with_parent (queue);
@@ -2082,11 +2104,11 @@ sbGStreamerVideoTranscoder::DecoderNoMorePads(GstElement *uridecodebin)
     gst_pad_link (mVideoSrc, queueSink);
     g_object_unref (queueSink);
 
-    GstPad *queueSrc = gst_element_get_pad (queue, "src");
+    GstPad *queueSrc = gst_element_get_static_pad (queue, "src");
     mVideoQueueSrc = queueSrc;
 
-    gst_pad_set_blocked_async (queueSrc, TRUE,
-                               (GstPadBlockCallback)pad_blocked_cb, this);
+    // GStreamer 1.0: Use pad probe to block/unblock
+    mVideoQueueProbeId = gst_pad_add_probe(queueSrc, GST_PAD_PROBE_TYPE_BLOCK, (GstPadProbeCallback)pad_blocked_cb, this, NULL);
   }
 
   mWaitingForCaps = PR_TRUE;
@@ -2115,7 +2137,7 @@ sbGStreamerVideoTranscoder::GetCapsFromPad (GstPad *pad)
   // is doing the same thing as the transcoder, getting caps for the stream.
 
   GstPad * realPad = GetRealPad(pad);
-  GstCaps *caps = gst_pad_get_negotiated_caps (realPad);
+  GstCaps *caps = gst_pad_get_current_caps (realPad);
   if (caps) {
     if (gst_caps_is_fixed (caps)) {
       g_object_unref(realPad);
@@ -2124,12 +2146,7 @@ sbGStreamerVideoTranscoder::GetCapsFromPad (GstPad *pad)
     gst_caps_unref (caps);
   }
 
-  caps = GST_PAD_CAPS (realPad);
-  if (caps) {
-    gst_caps_ref (caps);
-    g_object_unref(realPad);
-    return caps;
-  }
+  // No fallback in 1.0, just return NULL
   g_object_unref(realPad);
   return NULL;
 }
@@ -2171,13 +2188,14 @@ sbGStreamerVideoTranscoder::CheckForAllCaps ()
     mWaitingForCaps = PR_FALSE;
 
     if (NS_SUCCEEDED (rv)) {
-      if (mAudioQueueSrc) {
-        gst_pad_set_blocked_async (mAudioQueueSrc, FALSE,
-                                   (GstPadBlockCallback)pad_blocked_cb, this);
+      if (mAudioQueueSrc && mAudioQueueProbeId != 0) {
+        // Remove the block probe
+        gst_pad_remove_probe(mAudioQueueSrc, mAudioQueueProbeId);
+        mAudioQueueProbeId = 0;
       }
-      if (mVideoQueueSrc) {
-        gst_pad_set_blocked_async (mVideoQueueSrc, FALSE,
-                                   (GstPadBlockCallback)pad_blocked_cb, this);
+      if (mVideoQueueSrc && mVideoQueueProbeId != 0) {
+        gst_pad_remove_probe(mVideoQueueSrc, mVideoQueueProbeId);
+        mVideoQueueProbeId = 0;
       }
     } else {
       // handle NS_FAILED(rv)

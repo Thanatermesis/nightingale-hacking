@@ -26,10 +26,11 @@
 # Process this file with autoconf to produce a configure script.
 #
 
-AC_PREREQ(2.56)
-AC_INIT(build/rules.mk)
+AC_PREREQ([2.71])
+AC_INIT
+AC_CONFIG_SRCDIR([build/rules.mk])
 AC_CONFIG_AUX_DIR(${srcdir}/build/autoconf)
-AC_CANONICAL_SYSTEM
+AC_CANONICAL_TARGET
 
 #
 # We're going to hardcode our obj and dist directory names for the moment.
@@ -897,7 +898,7 @@ case "$SB_PLATFORM" in
   ;;
   macosx)
     if ! test -e $SB_MACOSX_SDK/SDKSettings.plist; then
-      AC_ERROR(Invalid Mac OS X SDK directory: $SB_MACOSX_SDK)
+      AC_MSG_ERROR(Invalid Mac OS X SDK directory: $SB_MACOSX_SDK)
     fi
 
     MACOSX_APPBUNDLE="Nightingale.app"
@@ -1026,11 +1027,11 @@ case "$SB_PLATFORM" in
     AC_SUBST(PTHREAD_LIBS, $LIBS)
     LIBS=$_SAVE_LIBS
 
-    GST_MAJORMINOR=0.10
-    GST_REQS=0.10.1
-    GSTPLUG_REQS=0.10.7
+    GST_MAJORMINOR=1.0
+    GST_REQS=1.0.0
+    GSTPLUG_REQS=1.0.0
 
-    PKG_CHECK_MODULES(GSTREAMER, gstreamer-0.10 >= $GST_REQS gstreamer-plugins-base-0.10 >= $GSTPLUG_REQS)
+    PKG_CHECK_MODULES(GSTREAMER, gstreamer-1.0 >= $GST_REQS gstreamer-plugins-base-1.0 >= $GSTPLUG_REQS)
     PKG_CHECK_MODULES(GTK, gtk+-2.0)
     AC_SUBST(GSTREAMER_CFLAGS)
     GSTREAMER_LIBS="$GSTREAMER_LIBS -lgstinterfaces-$GST_MAJORMINOR -lgstvideo-$GST_MAJORMINOR -lgstaudio-$GST_MAJORMINOR"
@@ -1311,14 +1312,14 @@ AC_SUBST(FORCE_MEDIA_CORE_QT)
 
 if test "$MEDIA_CORE_GST_SYSTEM" = "1"; then
 
-  GST_MAJORMINOR=0.10
-  GST_REQS=0.10.1
-  GSTPLUG_REQS=0.10.7
+  GST_MAJORMINOR=1.0
+  GST_REQS=1.0.0
+  GSTPLUG_REQS=1.0.0
 
-  PKG_CHECK_MODULES(GSTREAMER, gstreamer-0.10 >= $GST_REQS gstreamer-plugins-base-0.10 >= $GSTPLUG_REQS)
+  PKG_CHECK_MODULES(GSTREAMER, gstreamer-1.0 >= $GST_REQS gstreamer-plugins-base-1.0 >= $GSTPLUG_REQS)
   AC_SUBST(GSTREAMER_CFLAGS)
 
-  GSTREAMER_LIBS="$GSTREAMER_LIBS -lgstinterfaces-$GST_MAJORMINOR -lgstvideo-$GST_MAJORMINOR -lgstaudio-$GST_MAJORMINOR"
+  GSTREAMER_LIBS="$GSTREAMER_LIBS -lgstvideo-1.0 -lgstaudio-1.0"
   AC_SUBST(GSTREAMER_LIBS)
 
 fi
@@ -1415,4 +1416,5 @@ rm -f ./conftest.sh
 # Generate all remaining makefiles
 #
 
-AC_OUTPUT($MAKEFILES)
+AC_CONFIG_FILES([$MAKEFILES])
+AC_OUTPUT

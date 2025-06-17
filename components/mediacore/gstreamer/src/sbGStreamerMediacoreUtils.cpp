@@ -200,7 +200,7 @@ ConvertPropertyArrayToTagList(sbIPropertyArray *properties)
   if (properties == nsnull)
     return NULL;
 
-  tags = gst_tag_list_new();
+  tags = gst_tag_list_new_empty();
   rv = properties->Enumerate(getter_AddRefs(propertyEnum));
   NS_ENSURE_SUCCESS(rv, NULL);
 
@@ -596,7 +596,8 @@ FindMatchingElementName(GstCaps *srcCaps, const char *typeName)
   data.srccaps = srcCaps;
   data.type = typeName;
 
-  list = gst_default_registry_feature_filter (
+  list = gst_registry_feature_filter (
+          gst_registry_get(),
           (GstPluginFeatureFilter)match_element_filter, FALSE, &data);
 
   for (walk = list; walk; walk = g_list_next (walk)) {
@@ -981,10 +982,14 @@ SetPropertyFromGValue(nsIWritablePropertyBag2 * aPropertyBag,
         nsCOMPtr<nsIWritableVariant> asVariant =
           do_CreateInstance("@mozilla.org/variant;1", &rv);
         NS_ENSURE_SUCCESS (rv, rv);
+        gsize buffer_size = gst_buffer_get_size(const_cast<GstBuffer*>(asGstBuffer));
+        uint8_t* buffer_data = static_cast<uint8_t*>(g_malloc(buffer_size));
+        gst_buffer_extract(const_cast<GstBuffer*>(asGstBuffer), 0, buffer_data, buffer_size);
         rv = asVariant->SetAsArray(nsIDataType::VTYPE_UINT8,
                                    nsnull,
-                                   GST_BUFFER_SIZE(asGstBuffer),
-                                   GST_BUFFER_DATA(asGstBuffer));
+                                   buffer_size,
+                                   buffer_data);
+        g_free(buffer_data);
         NS_ENSURE_SUCCESS (rv, rv);
 
         // QI to an nsIWritablePropertyBag to access the generic SetProperty()

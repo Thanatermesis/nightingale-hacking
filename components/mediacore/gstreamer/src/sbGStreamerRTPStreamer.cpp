@@ -156,7 +156,7 @@ sbGStreamerRTPStreamer::BuildPipeline()
   gst_object_unref (sink);
 
   payloader = gst_bin_get_by_name (GST_BIN (mPipeline), "payloader");
-  srcpad = gst_element_get_pad (payloader, "src");
+  srcpad = gst_element_get_static_pad (payloader, "src");
   g_signal_connect (srcpad, "notify::caps", (GCallback) capsNotifyHelper, this);
   gst_object_unref (srcpad);
   gst_object_unref (payloader);
@@ -171,7 +171,7 @@ sbGStreamerRTPStreamer::capsNotifyHelper(GObject* obj, GParamSpec* pspec,
         sbGStreamerRTPStreamer *streamer)
 {
   GstPad *pad = GST_PAD(obj);
-  GstCaps *caps = gst_pad_get_negotiated_caps(pad);
+  GstCaps *caps = gst_pad_get_current_caps(pad);
 
   if (caps) {
     streamer->OnCapsSet(caps);

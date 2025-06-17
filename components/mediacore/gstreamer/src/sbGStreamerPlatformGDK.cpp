@@ -29,6 +29,7 @@
 
 #include <gdk/gdkx.h>
 #include <X11/Xlib.h>
+#include <gst/video/videooverlay.h>
 
 #include <prlog.h>
 #include <nsDebug.h>
@@ -304,7 +305,7 @@ GDKPlatformInterface::SetVideoBox (nsIBoxObject *aBoxObject, nsIWidget *aWidget)
   return NS_OK;
 }
 
-void GDKPlatformInterface::SetXOverlayWindowID(GstXOverlay *aXOverlay)
+void GDKPlatformInterface::SetXOverlayWindowID(GstVideoOverlay *aXOverlay)
 {
   nsresult rv;
 
@@ -326,9 +327,9 @@ void GDKPlatformInterface::SetXOverlayWindowID(GstXOverlay *aXOverlay)
   }
 
   if (mWindowXID) {
-    gst_x_overlay_set_xwindow_id(aXOverlay, mWindowXID);
+    gst_video_overlay_set_window_handle(aXOverlay, mWindowXID);
 
-    LOG(("Set xoverlay %d to windowid %x\n", aXOverlay, mWindowXID));
+    LOG(("Set video overlay %p to windowid %lx\n", aXOverlay, (unsigned long)mWindowXID));
   }
 }
 
