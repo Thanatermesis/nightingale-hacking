@@ -12,9 +12,13 @@ LDFLAGS += -Wl,--as-needed
 override_dh_auto_configure:
 
 override_dh_auto_build:
-	# echo 'ac_add_options --enable-debug' >> nightingale.config
+	echo 'ac_add_options --enable-debug' >> nightingale.config
+	echo 'ac_add_options --enable-static' >> nightingale.config
 	echo 'ac_add_options --enable-libnotify' >> nightingale.config
 	echo 'ac_add_options --enable-system-nspr' >> nightingale.config
+	echo 'ac_add_options --with-taglib-source=system' >> nightingale.config
+	# echo 'ac_add_options --with-media-core=gstreamer-system' >> nightingale.config
+	# echo 'ac_add_options --with-media-core=qt' >> nightingale.config
 	$(CURDIR)/build.sh
 
 	# remove extra license file

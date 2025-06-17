@@ -47,7 +47,7 @@
    Joe Hughes <joe@retrovirus.com>
    Pamela Greene <pamg.bugs@gmail.com>
    Michael Ventnor <ventnors_dogs234@yahoo.com.au>
-   Simon Bünzli <zeniko@gmail.com>
+   Simon Bunzli <zeniko@gmail.com>
    Gijs Kruitbosch <gijskruitbosch@gmail.com>
    Ehsan Akhgari <ehsan.akhgari@gmail.com>
    Dan Mosedale <dmose@mozilla.org>

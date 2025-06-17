@@ -181,6 +181,6 @@ make clobber
 rm -rf compiled &> /dev/null #sometimes clobber doesn't nuke it all
 make
 
-sed -i 's/0\.10/1\.0/g' nightingale
+sed -i 's/0\.10/1\.0/g' compiled/dist/nightingale
 
 echo "Build Succeeded!"

@@ -8,17 +8,16 @@ Build-Depends:
  debhelper (>= 9),
  libasound2,
  libdbus-glib-1-dev,
- libgnomevfs2-dev,
  libgstreamer-plugins-base1.0-dev,
  libgtk2.0-dev,
- libidl0,
- libsqlite0-dev,
+ libidl-2-0,
+ libsqlite3-dev,
  libtag1-dev,
  libnotify-dev,
  libnspr4-dev,
  libxext-dev,
  libxt6,
- python (>=2.6),
+ python3,
  unzip,
  wget,
  zip
@@ -32,8 +31,9 @@ Architecture: any
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
- gstreamer1.0-plugins-good
+ gstreamer1.0-plugins-base
 Recommends:
+ gstreamer1.0-plugins-good
 Suggests:
  gstreamer1.0-plugins-bad,
  gstreamer1.0-plugins-ugly,

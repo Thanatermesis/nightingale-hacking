@@ -43,8 +43,6 @@
 
 /* Local file imports. */
 #include "MetadataHandlerTaglib.h"
-#include "tagunion.h" /* a taglib import, but internal use only...
-                         here until taglib2 where it won't be necessary*/
 
 /* Local module imports. */
 #include "TaglibChannelFileIO.h"
@@ -122,34 +120,6 @@
   PR_END_MACRO
 #define GET_PROPERTY(taglibid)                              \
   properties[TagLib::String(taglibid)].toString(", ")
-#define TAGLIB1_PROPERTIES_WORKAROUND(pTag)                 \
-  PR_BEGIN_MACRO                                            \
-  if (dynamic_cast<TagLib::APE::Tag*>(pTag)){               \
-    properties.merge(dynamic_cast<TagLib::APE::Tag*>(pTag)  \
-      ->properties());                                      \
-  }                                                         \
-  if (dynamic_cast<TagLib::ASF::Tag*>(pTag)){               \
-    properties.merge(dynamic_cast<TagLib::ASF::Tag*>(pTag)  \
-      ->properties());                                      \
-  }                                                         \
-  if (dynamic_cast<TagLib::ID3v1::Tag*>(pTag)){             \
-    properties.merge(dynamic_cast<TagLib::ID3v1::Tag*>(pTag)\
-      ->properties());                                      \
-  }                                                         \
-  if (dynamic_cast<TagLib::ID3v2::Tag*>(pTag)){             \
-    properties.merge(dynamic_cast<TagLib::ID3v2::Tag*>(pTag)\
-      ->properties());                                      \
-  }                                                         \
-  if (dynamic_cast<TagLib::MP4::Tag*>(pTag)){               \
-    properties.merge(dynamic_cast<TagLib::MP4::Tag*>(pTag)  \
-      ->properties());                                      \
-  }                                                         \
-  if (dynamic_cast<TagLib::Ogg::XiphComment*>(pTag)){       \
-    properties.merge(                                       \
-      dynamic_cast<TagLib::Ogg::XiphComment*>(pTag)         \
-      ->properties());                                      \
-  }                                                         \
-  PR_END_MACRO
 
 // Property namespace for Gracenote properties
 // Note that this must match those used in sbGracenoteDefines.h, so
@@ -1288,7 +1258,7 @@ nsresult sbMetadataHandlerTaglib::RemoveAllImagesOGG(
         {
           break;
         }
-        std::string decodedData = base64_decode(encodedData.to8Bit());
+        std::string decodedData = base64_decode(encodedData.to8Bit(true));
         if (decodedData.empty())
           break;
         ByteVector bv;
@@ -1694,7 +1664,7 @@ nsresult sbMetadataHandlerTaglib::ReadImageOgg(TagLib::Ogg::XiphComment  *aTag,
       {
         break;
       }
-      std::string decodedData = base64_decode(encodedData.to8Bit());
+      std::string decodedData = base64_decode(encodedData.to8Bit(true));
       if (decodedData.empty())
         break;
       ByteVector bv;
@@ -2447,8 +2417,9 @@ PRBool sbMetadataHandlerTaglib::ReadFile(
     TagLib::File                *pTagFile,
     const char                  *aCharset)
 {
-  TagLib::Tag                 *pTag;
-  TagLib::AudioProperties     *pAudioProperties;
+  // Updated for modern TagLib: use TagLib::File::tag() and audioProperties() directly.
+  TagLib::Tag                 *pTag = nullptr;
+  TagLib::AudioProperties     *pAudioProperties = nullptr;
 
   /* We want to be sure we have a legit file ref. */
   if (!pTagFile || !pTagFile->isValid()) {
@@ -2459,23 +2430,6 @@ PRBool sbMetadataHandlerTaglib::ReadFile(
   if (pTag) {
     TagLib::PropertyMap properties = pTag->properties();
 
-    // We need to emulate virtual here, as taglib can't mark them as virtual
-    // for now. The following stuff can be deleted once taglib2 is used.
-    if (dynamic_cast<TagLib::TagUnion*>(pTag)){
-      TagLib::TagUnion* tagUnion = dynamic_cast<TagLib::TagUnion*>(pTag);
-      if (tagUnion->tag(2)){
-        TAGLIB1_PROPERTIES_WORKAROUND(tagUnion->tag(2));
-      }
-      if (tagUnion->tag(1)){
-        TAGLIB1_PROPERTIES_WORKAROUND(tagUnion->tag(1));
-      }
-      if (tagUnion->tag(0)){
-        TAGLIB1_PROPERTIES_WORKAROUND(tagUnion->tag(0));
-      }
-    } else {
-      TAGLIB1_PROPERTIES_WORKAROUND(pTag);
-    }
-    
     // Default tags
     AddMetadataValue(SB_PROPERTY_TRACKNAME,       pTag->title(), aCharset);
     AddMetadataValue(SB_PROPERTY_ARTISTNAME,      pTag->artist(), aCharset);
@@ -2488,8 +2442,8 @@ PRBool sbMetadataHandlerTaglib::ReadFile(
       GET_PROPERTY("ALBUMARTIST"), aCharset);
     AddMetadataValue(SB_PROPERTY_LYRICS,
       GET_PROPERTY("LYRICS"), aCharset);
-// Disabling producer: it's not exposed anywhere in the UI anyway.
-//    AddMetadataValue(SB_PROPERTY_PRODUCERNAME,    pTag->producer(), aCharset);
+    // Disabling producer: it's not exposed anywhere in the UI anyway.
+    // AddMetadataValue(SB_PROPERTY_PRODUCERNAME,    pTag->producer(), aCharset);
     AddMetadataValue(SB_PROPERTY_COMPOSERNAME,
       GET_PROPERTY("COMPOSER"), aCharset);
     AddMetadataValue(SB_PROPERTY_CONDUCTORNAME,
@@ -2518,7 +2472,7 @@ PRBool sbMetadataHandlerTaglib::ReadFile(
       SB_PROPERTY_TOTALTRACKS);
 
     AddMetadataValue(SB_PROPERTY_RATING, GET_PROPERTY("NIGHTINGALE-RATING"), aCharset);
-    
+
     // Disabled, as we have no write support for this, see WriteID3v2 for details.
     // AddMetadataValue(SB_PROPERTY_ISPARTOFCOMPILATION, pTag->isCompilation());
   }
@@ -3628,7 +3582,7 @@ nsresult sbMetadataHandlerTaglib::WriteXiphComment(
 
 /*
  * base64 encode/decode routines:
- * Copyright (C) 2004-2008 René Nyffenegger
+ * Copyright (C) 2004-2008 Rene Nyffenegger
  *
  * This source code is provided 'as-is', without any express or implied
  * warranty. In no event will the author be held liable for any damages
@@ -3648,7 +3602,7 @@ nsresult sbMetadataHandlerTaglib::WriteXiphComment(
  *
  * 3. This notice may not be removed or altered from any source distribution.
  *
- * René Nyffenegger rene.nyffenegger@adp-gmbh.ch
+ * Rene Nyffenegger rene.nyffenegger@adp-gmbh.ch
 */
 
 static const std::string base64_chars = 

@@ -1023,7 +1023,7 @@ gst_mozilla_src_do_seek (GstBaseSrc * bsrc, GstSegment * segment)
 {
   GstMozillaSrc *src = GST_MOZILLA_SRC (bsrc);
 
-  if (segment->start == src->current_position) {
+  if ((gint64)segment->start == (gint64)src->current_position) {
     /* We're being asked to seek to the where we already are (this includes
      * the initial seek to zero); so just return success */
     return TRUE;

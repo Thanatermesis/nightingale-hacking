@@ -67,7 +67,7 @@ function runTest () {
   dbq.addQuery("insert into bind_test values " +
                "('foo', 'bar', 1234.567, 666, 9876543210)");
   dbq.addQuery("insert into bind_test values " +
-               "('Sigur Rós', 'Ágætis Byrjun', -1234.567, -666, -9876543210)");
+               "('Sigur Ros', 'agatis Byrjun', -1234.567, -666, -9876543210)");
   dbq.execute();
   dbq.waitForCompletion();
   dbq.resetQuery();

@@ -39,16 +39,20 @@
 #set -e
 #set -x
 
-# use our own gstreamer libs
-for dir in /usr/lib /usr/lib64 /usr/lib/$(uname -m|sed -e 's/.*64.*/x86_64/;/x86_64/!s/.*/i386/')-linux-gnu ; do
-  if [ -f ${dir}/gstreamer-1.0/libgstcoreelements.so ] ; then
-    export GST_PLUGIN_PATH=${dir}/gstreamer\-1.0
-    break
-  elif [ -f ${dir}/gstreamer1.0/libgstcoreelements.so ] ; then
-    export GST_PLUGIN_PATH=${dir}/gstreamer1.0
-    break
-  fi
-done
+# Prefer bundled GStreamer plugins if present, otherwise fall back to system
+if [ -d "$MOZ_DIST_BIN/gst-plugins" ]; then
+  export GST_PLUGIN_PATH="$MOZ_DIST_BIN/gst-plugins"
+else
+  for dir in /usr/lib /usr/lib64 /usr/lib/$(uname -m|sed -e 's/.*64.*/x86_64/;/x86_64/!s/.*/i386/')-linux-gnu ; do
+    if [ -f ${dir}/gstreamer-1.0/libgstcoreelements.so ] ; then
+      export GST_PLUGIN_PATH=${dir}/gstreamer-1.0
+      break
+    elif [ -f ${dir}/gstreamer1.0/libgstcoreelements.so ] ; then
+      export GST_PLUGIN_PATH=${dir}/gstreamer1.0
+      break
+    fi
+  done
+fi
 
 cmdname=`basename "$0"`
 MOZ_DIST_BIN=`dirname "$0"`
@@ -359,6 +363,13 @@ then
 	done
 	cd "$here"
 fi
+
+# Check for libxul.so in MOZ_DIST_BIN and warn if missing
+if [ ! -f "$MOZ_DIST_BIN/libxul.so" ]; then
+  echo "Warning: libxul.so not found in $MOZ_DIST_BIN"
+  echo "         This may prevent the interface from launching."
+  echo "         Please ensure libxul.so is present in the application directory."
+fi
 #
 #
 ##
@@ -400,6 +411,13 @@ if [ `uname -s` != "SunOS" -o -h "$MOZ_DIST_BIN/libmozjs.so" ]
 then
 	LD_LIBRARY_PATH=${MOZ_DIST_BIN}:${MOZ_DIST_BIN}/plugins:${MRE_HOME}${LD_LIBRARY_PATH+":$LD_LIBRARY_PATH"}
 fi 
+
+# Always ensure LD_LIBRARY_PATH includes MOZ_DIST_BIN for libxul.so
+case ":$LD_LIBRARY_PATH:" in
+  *":$MOZ_DIST_BIN:"*) ;;
+  *) LD_LIBRARY_PATH="$MOZ_DIST_BIN:$LD_LIBRARY_PATH";;
+esac
+export LD_LIBRARY_PATH
 
 if [ -n "$LD_LIBRARYN32_PATH" ]
 then
